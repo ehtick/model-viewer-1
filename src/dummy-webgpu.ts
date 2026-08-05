@@ -1,5 +1,6 @@
-import { AppBase } from 'playcanvas';
+import type { AppBase } from 'playcanvas';
 
+// eslint-disable-next-line @typescript-eslint/no-extraneous-class -- preserve constructor api
 class DummyWebGPU {
     constructor(app: AppBase) {
         if (app.graphicsDevice.isWebGPU) {
@@ -28,7 +29,13 @@ class DummyWebGPU {
             console.log('Created WebGPU device used for profiling');
 
             // Create a WebGPU context for the new canvas
-            const context = canvas.getContext('webgpu') as any;
+            const context = canvas.getContext('webgpu' as never) as unknown as {
+                configure: (options: {
+                    device: Awaited<ReturnType<typeof adapter.requestDevice>>;
+                    format: string;
+                }) => void;
+                getCurrentTexture: () => { createView: () => unknown };
+            };
 
             // Configure the WebGPU context
             context.configure({ device, format: 'bgra8unorm' });
@@ -45,12 +52,14 @@ class DummyWebGPU {
 
                 // Create a render pass descriptor with a red background
                 const renderPassDescriptor = {
-                    colorAttachments: [{
-                        view: textureView,
-                        clearValue: { r: 1.0, g: 0.0, b: 0.0, a: 1.0 },  // Red background
-                        loadOp: 'clear',
-                        storeOp: 'store'
-                    }]
+                    colorAttachments: [
+                        {
+                            view: textureView,
+                            clearValue: { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }, // Red background
+                            loadOp: 'clear',
+                            storeOp: 'store'
+                        }
+                    ]
                 };
 
                 // render pass

@@ -1,3 +1,4 @@
+import type { CameraComponent, ScopeSpace, Shader, GraphicsDevice } from 'playcanvas';
 import {
     BLENDEQUATION_ADD,
     BLENDMODE_CONSTANT,
@@ -10,15 +11,11 @@ import {
     PIXELFORMAT_RGBA32F,
     SEMANTIC_POSITION,
     BlendState,
-    CameraComponent,
     RenderPassShaderQuad,
     RenderTarget,
-    ScopeSpace,
-    Shader,
     ShaderUtils,
     Texture,
     Vec3,
-    GraphicsDevice,
     EventHandler
 } from 'playcanvas';
 
@@ -44,7 +41,7 @@ const fragmentGLSL = `
     }
 `;
 
-const vertexWGSL = /* wgsl */`
+const vertexWGSL = /* wgsl */ `
     attribute vertex_position: vec2f;
 
     varying texcoord: vec2f;
@@ -62,7 +59,7 @@ const vertexWGSL = /* wgsl */`
     }
 `;
 
-const fragmentWGSL = /* wgsl */`
+const fragmentWGSL = /* wgsl */ `
     varying texcoord: vec2f;
 
     var multiframeTex: texture_2d<f32>;
@@ -91,9 +88,11 @@ const supportsFloat32 = (device: GraphicsDevice): boolean => {
 
 // lighting source should be stored HDR
 const choosePixelFormat = (device: GraphicsDevice): number => {
-    return supportsFloat16(device) ? PIXELFORMAT_RGBA16F :
-        supportsFloat32(device) ? PIXELFORMAT_RGBA32F :
-            PIXELFORMAT_RGBA8;
+    return supportsFloat16(device)
+        ? PIXELFORMAT_RGBA16F
+        : supportsFloat32(device)
+          ? PIXELFORMAT_RGBA32F
+          : PIXELFORMAT_RGBA8;
 };
 
 // calculate 1d gauss
@@ -113,7 +112,7 @@ class CustomRenderPass extends RenderPassShaderQuad {
     }
 }
 
-const resolve = (scope: ScopeSpace, values: any) => {
+const resolve = (scope: ScopeSpace, values: Record<string, unknown>) => {
     for (const key in values) {
         scope.resolve(key).setValue(values[key]);
     }
@@ -257,7 +256,7 @@ class Multiframe {
             resolve(device.scope, {
                 texcoordMod: !blending && device.isWebGPU ? [1, -1, 0, 1] : [1, 1, 0, 0],
                 multiframeTex: blending ? this.accumTexture : this.sourceTex,
-                power: blending ? (1.0 / gamma) : 1.0
+                power: blending ? 1.0 / gamma : 1.0
             });
         });
 
@@ -294,7 +293,10 @@ class Multiframe {
         const samples: Vec3[] = [];
         const kernelSize = Math.ceil(3 * sigma) + 1;
         const halfSize = size * 0.5;
-        let sx, sy, weight, totalWeight = 0;
+        let sx,
+            sy,
+            weight,
+            totalWeight = 0;
 
         // generate jittered grid samples (poisson would be better)
         for (let x = 0; x < numSamples; ++x) {
@@ -308,7 +310,7 @@ class Multiframe {
                     sy = (y / (numSamples - 1)) * 2.0 - 1.0;
                 }
                 // calculate sample weight
-                weight = (sigma <= 0.0) ? 1.0 : gauss(sx * kernelSize, sigma) * gauss(sy * kernelSize, sigma);
+                weight = sigma <= 0.0 ? 1.0 : gauss(sx * kernelSize, sigma) * gauss(sy * kernelSize, sigma);
                 totalWeight += weight;
                 samples.push(new Vec3(sx * halfSize, sy * halfSize, weight));
             }
@@ -323,7 +325,7 @@ class Multiframe {
         samples.sort((a, b) => {
             const aL = a.length();
             const bL = b.length();
-            return aL < bL ? -1 : (bL < aL ? 1 : 0);
+            return aL < bL ? -1 : bL < aL ? 1 : 0;
         });
 
         return samples;
@@ -373,6 +375,4 @@ class Multiframe {
     }
 }
 
-export {
-    Multiframe
-};
+export { Multiframe };

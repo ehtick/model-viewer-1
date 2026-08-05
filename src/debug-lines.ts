@@ -1,3 +1,4 @@
+import type { Entity } from 'playcanvas';
 import {
     BLEND_NORMAL,
     BUFFER_DYNAMIC,
@@ -12,7 +13,6 @@ import {
     TYPE_FLOAT32,
     TYPE_UINT8,
     DepthState,
-    Entity,
     GraphNode,
     Layer,
     Mesh,
@@ -25,7 +25,7 @@ import {
     VertexIterator
 } from 'playcanvas';
 
-import { App } from './app';
+import type { App } from './app';
 
 let debugLayerFront: Layer = null;
 let debugLayerBack: Layer = null;
@@ -36,21 +36,57 @@ const v2 = new Vec3();
 const up = new Vec3(0, 1, 0);
 const mat = new Mat4();
 const unitBone = [
-    [[0,    0,   0], [-0.5, 0, 0.3]],
-    [[0,    0,   0], [0.5,  0, 0.3]],
-    [[0,    0,   0], [0, -0.5, 0.3]],
-    [[0,    0,   0], [0,  0.5, 0.3]],
-    [[0,    0,   1], [-0.5, 0, 0.3]],
-    [[0,    0,   1], [0.5,  0, 0.3]],
-    [[0,    0,   1], [0, -0.5, 0.3]],
-    [[0,    0,   1], [0,  0.5, 0.3]],
-    [[0, -0.5, 0.3], [0.5,  0, 0.3]],
-    [[0.5,  0, 0.3], [0,  0.5, 0.3]],
-    [[0,  0.5, 0.3], [-0.5, 0, 0.3]],
-    [[-0.5, 0, 0.3], [0, -0.5, 0.3]]
+    [
+        [0, 0, 0],
+        [-0.5, 0, 0.3]
+    ],
+    [
+        [0, 0, 0],
+        [0.5, 0, 0.3]
+    ],
+    [
+        [0, 0, 0],
+        [0, -0.5, 0.3]
+    ],
+    [
+        [0, 0, 0],
+        [0, 0.5, 0.3]
+    ],
+    [
+        [0, 0, 1],
+        [-0.5, 0, 0.3]
+    ],
+    [
+        [0, 0, 1],
+        [0.5, 0, 0.3]
+    ],
+    [
+        [0, 0, 1],
+        [0, -0.5, 0.3]
+    ],
+    [
+        [0, 0, 1],
+        [0, 0.5, 0.3]
+    ],
+    [
+        [0, -0.5, 0.3],
+        [0.5, 0, 0.3]
+    ],
+    [
+        [0.5, 0, 0.3],
+        [0, 0.5, 0.3]
+    ],
+    [
+        [0, 0.5, 0.3],
+        [-0.5, 0, 0.3]
+    ],
+    [
+        [-0.5, 0, 0.3],
+        [0, -0.5, 0.3]
+    ]
 ];
 
-const vertexGLSL = /* glsl */`
+const vertexGLSL = /* glsl */ `
 attribute vec3 vertex_position;
 attribute vec4 vertex_color;
 
@@ -72,7 +108,7 @@ void main(void) {
     gl_Position.z = 0.0;
 }`;
 
-const fragmentGLSL = /* glsl */`
+const fragmentGLSL = /* glsl */ `
 precision highp float;
 
 varying vec2 zw;
@@ -86,7 +122,7 @@ void main(void) {
     gl_FragDepth = max(0.0, min(1.0, (zw.x / zw.y + 1.0) * 0.5));
 }`;
 
-const vertexWGSL = /* wgsl */`
+const vertexWGSL = /* wgsl */ `
 attribute vertex_position: vec3f;
 attribute vertex_color: vec4f;
 
@@ -113,7 +149,7 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
 }
 `;
 
-const fragmentWGSL = /* wgsl */`
+const fragmentWGSL = /* wgsl */ `
 varying zw: vec2f;
 varying vColor: vec4f;
 
@@ -308,7 +344,7 @@ class DebugLines {
         this.vertexCursor++;
     }
 
-    generateNormals(vertexBuffer: VertexBuffer, worldMat: Mat4, length: number, skinMatrices: Array<Mat4>) {
+    generateNormals(vertexBuffer: VertexBuffer, worldMat: Mat4, length: number, skinMatrices: Mat4[]) {
         const it = new VertexIterator(vertexBuffer);
         const positions = it.element[SEMANTIC_POSITION];
         const normals = it.element[SEMANTIC_NORMAL];
@@ -333,11 +369,7 @@ class DebugLines {
                 // transform by skinning matrices
                 skinMat.copy(Mat4.ZERO);
                 for (let j = 0; j < 4; ++j) {
-                    DebugLines.matrixMad(
-                        skinMat,
-                        skinMatrices[blendIndices.get(j)],
-                        blendWeights.get(j)
-                    );
+                    DebugLines.matrixMad(skinMat, skinMatrices[blendIndices.get(j)], blendWeights.get(j));
                 }
                 skinMat.mul2(worldMat, skinMat);
                 skinMat.transformPoint(p0, p0);
@@ -395,7 +427,7 @@ class DebugLines {
     generateSkeleton(node: GraphNode, showBones: boolean, showAxes: boolean, selectedNode: GraphNode) {
         const recurse = (curr: GraphNode, selected: boolean) => {
             if (curr.enabled) {
-                selected ||= (curr === selectedNode);
+                selected ||= curr === selectedNode;
 
                 // render child links
                 for (let i = 0; i < curr.children.length; ++i) {
@@ -436,6 +468,4 @@ class DebugLines {
     }
 }
 
-export {
-    DebugLines
-};
+export { DebugLines };

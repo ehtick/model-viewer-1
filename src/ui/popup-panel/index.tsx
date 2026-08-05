@@ -1,27 +1,45 @@
 import { Button } from '@playcanvas/pcui/react';
 import { UsdzExporter } from 'playcanvas';
+import type { Entity } from 'playcanvas';
 import React from 'react';
+
+import { addEventListenerOnClickOnly } from '../../helpers';
+import type { SetProperty, ObserverData } from '../../types';
 
 import AnimationControls from './animation-controls';
 import { CameraPanel, SkyboxPanel, LightPanel, SettingsPanel, ViewPanel } from './panels';
-import { addEventListenerOnClickOnly } from '../../helpers';
-import { SetProperty, ObserverData } from '../../types';
 
-const PopupPanelControls = (props: { observerData: ObserverData, setProperty: SetProperty }) => {
-    return (<>
-        <CameraPanel setProperty={props.setProperty} observerData={props.observerData} />
-        <SkyboxPanel setProperty={props.setProperty} skyboxData={props.observerData.skybox} uiData={props.observerData.ui} />
-        <LightPanel setProperty={props.setProperty} lightData={props.observerData.light} uiData={props.observerData.ui} shadowCatcherData={props.observerData.shadowCatcher}/>
-        <SettingsPanel setProperty={props.setProperty} observerData={props.observerData} />
-        <ViewPanel setProperty={props.setProperty} sceneData={props.observerData.scene} uiData={props.observerData.ui} runtimeData={props.observerData.runtime}/>
-    </>);
+const PopupPanelControls = (props: { observerData: ObserverData; setProperty: SetProperty }) => {
+    return (
+        <>
+            <CameraPanel setProperty={props.setProperty} observerData={props.observerData} />
+            <SkyboxPanel
+                setProperty={props.setProperty}
+                skyboxData={props.observerData.skybox}
+                uiData={props.observerData.ui}
+            />
+            <LightPanel
+                setProperty={props.setProperty}
+                lightData={props.observerData.light}
+                uiData={props.observerData.ui}
+                shadowCatcherData={props.observerData.shadowCatcher}
+            />
+            <SettingsPanel setProperty={props.setProperty} observerData={props.observerData} />
+            <ViewPanel
+                setProperty={props.setProperty}
+                sceneData={props.observerData.scene}
+                uiData={props.observerData.ui}
+                runtimeData={props.observerData.runtime}
+            />
+        </>
+    );
 };
 
-class PopupButtonControls extends React.Component <{ observerData: ObserverData, setProperty: SetProperty }> {
-    popupPanelElement: any;
+class PopupButtonControls extends React.Component<{ observerData: ObserverData; setProperty: SetProperty }> {
+    popupPanelElement: HTMLElement | undefined;
 
     render() {
-        let removeDeselectEvents: any;
+        let removeDeselectEvents: (() => void) | null | undefined;
         const handleClick = (value: string) => {
             this.props.setProperty('ui.active', this.props.observerData.ui.active === value ? null : value);
 
@@ -30,8 +48,8 @@ class PopupButtonControls extends React.Component <{ observerData: ObserverData,
             // add the event listener after the current click is complete
             setTimeout(() => {
                 if (removeDeselectEvents) removeDeselectEvents();
-                const deactivateUi = (e: any) => {
-                    if (this.popupPanelElement.contains(e.target)) {
+                const deactivateUi = (e: MouseEvent) => {
+                    if (this.popupPanelElement.contains(e.target as Node)) {
                         return;
                     }
                     this.props.setProperty('ui.active', null);
@@ -43,17 +61,50 @@ class PopupButtonControls extends React.Component <{ observerData: ObserverData,
         };
 
         const buildClass = (value: string) => {
-            return (this.props.observerData.ui.active === value) ? ['popup-button', 'selected'] : ['popup-button'];
+            return this.props.observerData.ui.active === value ? ['popup-button', 'selected'] : ['popup-button'];
         };
 
         return (
-            <div id='popup-buttons-parent'>
-                <AnimationControls animationData={this.props.observerData.animation} setProperty={this.props.setProperty} />
-                <Button class={buildClass('camera')} icon='E212' width={40} height={40} onClick={() => handleClick('camera')} />
-                <Button class={buildClass('skybox')} icon='E200' width={40} height={40} onClick={() => handleClick('skybox')} />
-                <Button class={buildClass('light')} icon='E194' width={40} height={40} onClick={() => handleClick('light')} />
-                <Button class={buildClass('settings')} icon='E134' width={40} height={40} onClick={() => handleClick('settings')} />
-                <Button class={buildClass('view')} icon='E301' width={40} height={40} onClick={() => handleClick('view')} />
+            <div id="popup-buttons-parent">
+                <AnimationControls
+                    animationData={this.props.observerData.animation}
+                    setProperty={this.props.setProperty}
+                />
+                <Button
+                    class={buildClass('camera')}
+                    icon="E212"
+                    width={40}
+                    height={40}
+                    onClick={() => handleClick('camera')}
+                />
+                <Button
+                    class={buildClass('skybox')}
+                    icon="E200"
+                    width={40}
+                    height={40}
+                    onClick={() => handleClick('skybox')}
+                />
+                <Button
+                    class={buildClass('light')}
+                    icon="E194"
+                    width={40}
+                    height={40}
+                    onClick={() => handleClick('light')}
+                />
+                <Button
+                    class={buildClass('settings')}
+                    icon="E134"
+                    width={40}
+                    height={40}
+                    onClick={() => handleClick('settings')}
+                />
+                <Button
+                    class={buildClass('view')}
+                    icon="E301"
+                    width={40}
+                    height={40}
+                    onClick={() => handleClick('view')}
+                />
             </div>
         );
     }
@@ -63,19 +114,23 @@ const toggleCollapsed = () => {
     document.getElementById('panel-left').classList.toggle('collapsed');
 };
 
-class PopupPanel extends React.Component <{ observerData: ObserverData, setProperty: SetProperty }> {
+class PopupPanel extends React.Component<{ observerData: ObserverData; setProperty: SetProperty }> {
     link: HTMLAnchorElement;
 
-    usdzExporter: any;
+    usdzExporter: UsdzExporter | undefined;
 
     get hasArSupport() {
         return this.props.observerData.runtime.xrSupported || this.usdzExporter;
     }
 
-    constructor(props: any) {
+    constructor(props: { observerData: ObserverData; setProperty: SetProperty }) {
         super(props);
-        this.link = (document.getElementById('ar-link') as HTMLAnchorElement);
-        if (this.link.relList.supports('ar') || (Boolean(window.webkit?.messageHandlers) && Boolean(/CriOS\/|EdgiOS\/|FxiOS\/|GSA\/|DuckDuckGo\//.test(navigator.userAgent)))) {
+        this.link = document.getElementById('ar-link') as HTMLAnchorElement;
+        if (
+            this.link.relList.supports('ar') ||
+            (Boolean(window.webkit?.messageHandlers) &&
+                Boolean(/CriOS\/|EdgiOS\/|FxiOS\/|GSA\/|DuckDuckGo\//.test(navigator.userAgent)))
+        ) {
             this.usdzExporter = new UsdzExporter();
         }
     }
@@ -84,55 +139,60 @@ class PopupPanel extends React.Component <{ observerData: ObserverData, setPrope
         if (this.props.observerData.runtime.xrActive) {
             return null;
         }
-        return (<div id='popup' className={this.props.observerData.scene.nodes === '[]' ? 'empty' : null}>
-            <PopupPanelControls observerData={this.props.observerData} setProperty={this.props.setProperty} />
-            <PopupButtonControls observerData={this.props.observerData} setProperty={this.props.setProperty} />
-            <Button
-                class='popup-button'
-                id='launch-ar-button'
-                icon='E189'
-                hidden={!this.hasArSupport || this.props.observerData.scene.nodes === '[]'}
-                width={40}
-                height={40}
-                onClick={() => {
-                    if (this.usdzExporter) {
-                        const sceneRoot = (window as any).viewer.app.root.findByName('sceneRoot');
-                        // convert the loaded entity into asdz file
-                        this.usdzExporter.build(sceneRoot).then((arrayBuffer: any) => {
-                            const blob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
-                            this.link.href = URL.createObjectURL(blob);
-                            this.link.click();
-                        }).catch(console.error);
-                    } else {
-                        if (window.viewer) window.viewer.xrMode.start();
-                    }
-                } }
-            />
-            <div id='floating-top-parent'>
+        return (
+            <div id="popup" className={this.props.observerData.scene.nodes === '[]' ? 'empty' : null}>
+                <PopupPanelControls observerData={this.props.observerData} setProperty={this.props.setProperty} />
+                <PopupButtonControls observerData={this.props.observerData} setProperty={this.props.setProperty} />
                 <Button
-                    class='popup-button'
-                    id='fullscreen-button'
-                    icon='E127'
+                    class="popup-button"
+                    id="launch-ar-button"
+                    icon="E189"
+                    hidden={!this.hasArSupport || this.props.observerData.scene.nodes === '[]'}
                     width={40}
                     height={40}
                     onClick={() => {
-                        toggleCollapsed();
-                    } }
+                        if (this.usdzExporter) {
+                            const sceneRoot = window.viewer.app.root.findByName('sceneRoot') as Entity;
+                            // convert the loaded entity into asdz file
+                            this.usdzExporter
+                                .build(sceneRoot)
+                                .then((arrayBuffer: ArrayBuffer) => {
+                                    const blob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
+                                    this.link.href = URL.createObjectURL(blob);
+                                    this.link.click();
+                                })
+                                .catch(console.error);
+                        } else {
+                            if (window.viewer) window.viewer.xrMode.start();
+                        }
+                    }}
                 />
+                <div id="floating-top-parent">
+                    <Button
+                        class="popup-button"
+                        id="fullscreen-button"
+                        icon="E127"
+                        width={40}
+                        height={40}
+                        onClick={() => {
+                            toggleCollapsed();
+                        }}
+                    />
+                </div>
+                <div id="floating-bottom-parent">
+                    <Button
+                        class={['popup-button', 'camera-mode-button', this.props.observerData.camera.mode]}
+                        id="camera-mode-button"
+                        width={40}
+                        height={40}
+                        onClick={() => {
+                            const mode = this.props.observerData.camera.mode === 'orbit' ? 'fly' : 'orbit';
+                            this.props.setProperty('camera.mode', mode);
+                        }}
+                    />
+                </div>
             </div>
-            <div id='floating-bottom-parent'>
-                <Button
-                    class={['popup-button', 'camera-mode-button', this.props.observerData.camera.mode]}
-                    id='camera-mode-button'
-                    width={40}
-                    height={40}
-                    onClick={() => {
-                        const mode = this.props.observerData.camera.mode === 'orbit' ? 'fly' : 'orbit';
-                        this.props.setProperty('camera.mode', mode);
-                    } }
-                />
-            </div>
-        </div>);
+        );
     }
 }
 

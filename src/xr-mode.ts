@@ -1,3 +1,4 @@
+import type { Entity, XrHitTestSource, XrManager, MeshInstance, RenderComponent, GSplatComponent } from 'playcanvas';
 import {
     XRSPACE_LOCAL,
     XRSPACE_VIEWER,
@@ -6,15 +7,9 @@ import {
     XRTRACKABLE_MESH,
     XRTYPE_AR,
     BoundingBox,
-    Entity,
     EventHandler,
     Vec3,
-    Mat4,
-    XrHitTestSource,
-    XrManager,
-    MeshInstance,
-    RenderComponent,
-    GSplatComponent
+    Mat4
 } from 'playcanvas';
 
 import arCloseImage from './svg/ar-close.svg';
@@ -28,7 +23,7 @@ const mat = new Mat4();
 // modulo dealing with negative numbers
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
-type TweenValue = {[key: string]: number};
+type TweenValue = Record<string, number>;
 
 // helper tween class
 class Tween {
@@ -42,13 +37,13 @@ class Tween {
 
     transitionTime = 0;
 
-    constructor(value: any) {
+    constructor(value: TweenValue) {
         this.value = value;
         this.source = { ...value };
         this.target = { ...value };
     }
 
-    goto(target: any, transitionTime = 0.25) {
+    goto(target: TweenValue, transitionTime = 0.25) {
         if (transitionTime === 0) {
             Tween.copy(this.value, target);
         }
@@ -71,24 +66,24 @@ class Tween {
         return Math.pow(n - 1, 5) + 1;
     }
 
-    static copy(target: any, source: any) {
+    static copy(target: TweenValue, source: TweenValue) {
         Object.keys(target).forEach((key: string) => {
             target[key] = source[key];
         });
     }
 
-    static lerp(target: any, a: any, b: any, t: number) {
+    static lerp(target: TweenValue, a: TweenValue, b: TweenValue, t: number) {
         Object.keys(target).forEach((key: string) => {
             target[key] = a[key] + t * (b[key] - a[key]);
         });
     }
 }
 
-interface XRObjectPlacementOptions {
+type XRObjectPlacementOptions = {
     xr: XrManager;
     camera: Entity;
     content: Entity;
-}
+};
 
 class XRObjectPlacementController {
     options: XRObjectPlacementOptions;
@@ -188,14 +183,14 @@ class XRObjectPlacementController {
     // create an invisible dom element for capturing pointer input
     // rotate the model with two finger tap and twist
     private _createRotateInput() {
-        const touches: Map<
+        const touches = new Map<
             number,
             {
-                start: {x: number; y: number};
-                previous: {x: number; y: number};
-                current: {x: number; y: number};
+                start: { x: number; y: number };
+                previous: { x: number; y: number };
+                current: { x: number; y: number };
             }
-        > = new Map();
+        >();
         let baseAngle = 0;
         let angle = 0;
 
@@ -336,16 +331,17 @@ class XRObjectPlacementController {
         events.on('xr:start', () => {
             hovering = true;
 
-            meshInstances = this.options.content.findComponents('render')
-            .map((render: RenderComponent) => {
-                return render.meshInstances;
-            })
-            .flat()
-            .concat(this.options.content.findComponents('gsplat')
-            .map((gsplat: GSplatComponent) => {
-                return gsplat.instance.meshInstance;
-            })
-            );
+            meshInstances = this.options.content
+                .findComponents('render')
+                .map((render: RenderComponent) => {
+                    return render.meshInstances;
+                })
+                .flat()
+                .concat(
+                    this.options.content.findComponents('gsplat').map((gsplat: GSplatComponent) => {
+                        return gsplat.instance.meshInstance;
+                    })
+                );
 
             updateBound();
 
@@ -428,8 +424,10 @@ class XRObjectPlacementController {
             const far = dist + boundRadius;
             const near = Math.max(0.0001, dist < boundRadius ? far / 1024 : dist - boundRadius);
 
-            // @ts-ignore
-            xr._setClipPlanes(near / 1.5, far * 1.5);
+            (xr as unknown as { _setClipPlanes: (near: number, far: number) => void })._setClipPlanes(
+                near / 1.5,
+                far * 1.5
+            );
 
             this.events.fire('xr:update');
         });

@@ -1,14 +1,10 @@
+import type { AppBase, BoundingBox, CameraComponent, MeshInstance, RenderComponent } from 'playcanvas';
 import {
     BLEND_PREMULTIPLIED,
     SHADOW_VSM_16F,
     SHADOWUPDATE_REALTIME as SHADOWUPDATE,
-    AppBase,
-    BoundingBox,
-    CameraComponent,
     Entity,
     Layer,
-    MeshInstance,
-    RenderComponent,
     StandardMaterial
 } from 'playcanvas';
 
@@ -101,11 +97,9 @@ class ShadowCatcher {
 
     onEntityRemoved(entity: Entity) {
         entity.findComponents('render').forEach((component: RenderComponent) => {
-            this.layer.shadowCasters = this.layer.shadowCasters.filter(
-                (meshInstance: MeshInstance) => {
-                    return component.meshInstances.indexOf(meshInstance) === -1;
-                }
-            );
+            this.layer.shadowCasters = this.layer.shadowCasters.filter((meshInstance: MeshInstance) => {
+                return component.meshInstances.indexOf(meshInstance) === -1;
+            });
         });
     }
 
@@ -138,6 +132,4 @@ class ShadowCatcher {
     }
 }
 
-export {
-    ShadowCatcher
-};
+export { ShadowCatcher };

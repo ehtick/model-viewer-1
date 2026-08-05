@@ -1,4 +1,17 @@
-import { Observer } from '@playcanvas/observer';
+import type { Observer } from '@playcanvas/observer';
+import type {
+    AnimTrack,
+    ContainerResource,
+    GraphicsDevice,
+    GraphNode,
+    GSplatComponent,
+    GSplatData,
+    Mesh,
+    MorphInstance,
+    MorphTarget,
+    RenderComponent,
+    CameraComponent
+} from 'playcanvas';
 import {
     ADDRESS_CLAMP_TO_EDGE,
     BLENDMODE_ONE,
@@ -36,36 +49,25 @@ import {
     path,
     platform,
     AnimEvents,
-    AnimTrack,
     Asset,
     BlendState,
     BoundingBox,
     Color,
-    ContainerResource,
     Entity,
     EnvLighting,
-    GraphicsDevice,
-    GraphNode,
-    GSplatComponent,
-    GSplatData,
     GSplatResource,
     Keyboard,
     Mat4,
-    Mesh,
     MeshInstance,
-    MorphInstance,
-    MorphTarget,
     Mouse,
     MiniStats,
     Quat,
-    RenderComponent,
     RenderTarget,
     StandardMaterial,
     Texture,
     TouchDevice,
     Vec3,
-    Vec2,
-    CameraComponent
+    Vec2
 } from 'playcanvas';
 
 import { App } from './app';
@@ -76,8 +78,10 @@ import { Multiframe } from './multiframe';
 import { Picker } from './picker';
 import { PngExporter } from './png-exporter';
 import { ShadowCatcher } from './shadow-catcher';
-import { File, HierarchyNode, MorphTargetData, SceneCamera } from './types';
+import type { File, HierarchyNode, MorphTargetData, SceneCamera } from './types';
 import { XRObjectPlacementController } from './xr-mode';
+
+// eslint-disable-next-line import-x/order -- preserve module initialization order
 import { MeshoptDecoder } from '../lib/meshopt_decoder.module.js';
 
 // model filename extensions
@@ -89,6 +93,31 @@ const bbox = new BoundingBox();
 
 const FOCUS_FOV = 75;
 const ZOOM_SCALE_MIN = 0.01;
+
+type LoaderCallback<T> = (err: string | null, result: T | null) => void;
+type MoveDevice = { _moveHandler: (event: MouseEvent) => void };
+type AssetOptions = NonNullable<ConstructorParameters<typeof Asset>[4]>;
+type GltfResource = { uri?: string };
+type GltfBufferView = {
+    extensions?: {
+        EXT_meshopt_compression?: {
+            buffer: number;
+            byteOffset?: number;
+            byteLength?: number;
+            count: number;
+            byteStride: number;
+            mode: string;
+            filter: string;
+        };
+    };
+};
+type RenderResource = { meshes: Mesh[] };
+type ContainerStatsResource = ContainerResource & { renders: Asset[]; materials: unknown[]; textures: Asset[] };
+type SceneResource = {
+    renders?: Asset[];
+    animations?: Asset[];
+    instantiateRenderEntity: () => Entity;
+};
 
 class Viewer {
     canvas: HTMLCanvasElement;
@@ -115,19 +144,19 @@ class Viewer {
 
     debugRoot: Entity;
 
-    entities: Array<Entity>;
+    entities: Entity[];
 
-    entityAssets: Array<{ entity: Entity; asset: Asset }>;
+    entityAssets: { entity: Entity; asset: Asset }[];
 
-    assets: Array<Asset>;
+    assets: Asset[];
 
-    meshInstances: Array<MeshInstance>;
+    meshInstances: MeshInstance[];
 
-    wireframeMeshInstances: Array<MeshInstance>;
+    wireframeMeshInstances: MeshInstance[];
 
     wireframeMaterial: StandardMaterial;
 
-    animTracks: Array<AnimTrack>;
+    animTracks: AnimTrack[];
 
     animationMap: Record<string, string>;
 
@@ -201,7 +230,7 @@ class Viewer {
 
     cameraControls: CameraControls;
 
-    sceneCameras: Array<CameraComponent> = [];
+    sceneCameras: CameraComponent[] = [];
 
     activeSceneCamera: CameraComponent | null = null;
 
@@ -228,31 +257,30 @@ class Viewer {
 
         // monkeypatch the mouse and touch input devices to ignore touch events
         // when they don't originate from the canvas.
-        const origMouseHandler = app.mouse._moveHandler;
+        const origMouseHandler = (app.mouse as unknown as MoveDevice)._moveHandler;
         app.mouse.detach();
-        app.mouse._moveHandler = (event: MouseEvent) => {
+        (app.mouse as unknown as MoveDevice)._moveHandler = (event: MouseEvent) => {
             if (event.target === canvas) {
                 origMouseHandler(event);
             }
         };
         app.mouse.attach(canvas);
 
-        const origTouchHandler = app.touch._moveHandler;
+        const origTouchHandler = (app.touch as unknown as MoveDevice)._moveHandler;
         app.touch.detach();
-        app.touch._moveHandler = (event: MouseEvent) => {
+        (app.touch as unknown as MoveDevice)._moveHandler = (event: MouseEvent) => {
             if (event.target === canvas) {
                 origTouchHandler(event);
             }
         };
         app.touch.attach(canvas);
 
-        // @ts-ignore
         const multisampleSupported = app.graphicsDevice.maxSamples > 1;
         observer.set('camera.multisampleSupported', multisampleSupported);
         observer.set('camera.multisample', multisampleSupported && observer.get('camera.multisample'));
 
         // create drop handler
-        CreateDropHandler(document.getElementById('app'), (files: Array<File>, resetScene: boolean) => {
+        CreateDropHandler(document.getElementById('app'), (files: File[], resetScene: boolean) => {
             this.loadFiles(files, resetScene);
         });
 
@@ -423,11 +451,12 @@ class Viewer {
         canvas.addEventListener('pointerdown', async (event) => {
             const now = Date.now();
             const delay = Math.max(0, now - lastTap.time);
-            if (delay < 300 &&
-                Math.abs(event.clientX - lastTap.x) < 8 &&
-                Math.abs(event.clientY - lastTap.y) < 8) {
+            if (delay < 300 && Math.abs(event.clientX - lastTap.x) < 8 && Math.abs(event.clientY - lastTap.y) < 8) {
                 lastTap.time = 0;
-                const result = await this.picker.pick(event.offsetX / canvas.clientWidth, event.offsetY / canvas.clientHeight);
+                const result = await this.picker.pick(
+                    event.offsetX / canvas.clientWidth,
+                    event.offsetY / canvas.clientHeight
+                );
                 if (result) {
                     this.cameraControls.reset(result, this.camera.getPosition());
                 }
@@ -503,7 +532,7 @@ class Viewer {
 
     // collects all mesh instances from entity hierarchy
     private collectMeshInstances(entity: Entity) {
-        const meshInstances: Array<MeshInstance> = [];
+        const meshInstances: MeshInstance[] = [];
         if (entity) {
             const components = entity.findComponents('render');
             for (let i = 0; i < components.length; i++) {
@@ -528,7 +557,7 @@ class Viewer {
     }
 
     // calculate the bounding box of the given mesh
-    private static calcMeshBoundingBox(result: BoundingBox, meshInstances: Array<MeshInstance>) {
+    private static calcMeshBoundingBox(result: BoundingBox, meshInstances: MeshInstance[]) {
         if (meshInstances.length > 0) {
             result.copy(meshInstances[0].aabb);
             for (let i = 1; i < meshInstances.length; ++i) {
@@ -568,7 +597,7 @@ class Viewer {
 
     // construct the controls interface and initialize controls
     private bindControlEvents() {
-        const controlEvents: Record<string, (...args: any[]) => void> = {
+        const controlEvents: Record<string, (...args: never[]) => void> = {
             // camera
             'camera.fov': this.setFov.bind(this),
             'camera.tonemapping': this.setTonemapping.bind(this),
@@ -688,7 +717,7 @@ class Viewer {
 
     // load the image files into the skybox. this function supports loading a single equirectangular
     // skybox image or 6 cubemap faces.
-    private loadSkybox(files: Array<File>) {
+    private loadSkybox(files: File[]) {
         const app = this.app;
 
         if (files.length !== 6) {
@@ -753,7 +782,7 @@ class Viewer {
 
             // construct the cubemap asset
             const cubemapAsset = new Asset('skybox_cubemap', 'cubemap', null, {
-                textures: faceAssets.map(faceAsset => faceAsset.id)
+                textures: faceAssets.map((faceAsset) => faceAsset.id)
             });
             cubemapAsset.loadFaces = true;
             cubemapAsset.on('load', () => {
@@ -868,7 +897,6 @@ class Viewer {
             });
         };
 
-        // @ts-ignore
         const maxSamples = device.maxSamples;
 
         // in with the new
@@ -942,12 +970,12 @@ class Viewer {
                 }
             } else {
                 // ContainerResource type isn't picked up correctly for some reason
-                const resource = asset.resource as any;
+                const resource = asset.resource as ContainerStatsResource;
 
                 variants = variants.concat(resource.getMaterialVariants() ?? []);
 
                 resource.renders.forEach((renderAsset: Asset) => {
-                    const res = renderAsset.resource as any;
+                    const res = renderAsset.resource as RenderResource;
                     meshCount += res.meshes.length;
                     res.meshes.forEach((mesh: Mesh) => {
                         vertexCount += mesh.vertexBuffer.getNumVertices();
@@ -988,7 +1016,7 @@ class Viewer {
             }
         });
 
-        const mapChildren = function (node: GraphNode): Array<HierarchyNode> {
+        const mapChildren = function (node: GraphNode): HierarchyNode[] {
             return node.children.map((child: GraphNode) => ({
                 name: child.name,
                 path: child.path,
@@ -996,7 +1024,7 @@ class Viewer {
             }));
         };
 
-        const graph: Array<HierarchyNode> = this.entities.map((entity) => {
+        const graph: HierarchyNode[] = this.entities.map((entity) => {
             return {
                 name: entity.name,
                 path: entity.path,
@@ -1021,7 +1049,7 @@ class Viewer {
         this.observer.set('scene.variant.selected', variants[0]);
 
         // detect cameras in the loaded scene
-        const cameras: Array<SceneCamera> = [];
+        const cameras: SceneCamera[] = [];
 
         this.entities.forEach((entity) => {
             const cameraComponents = entity.findComponents('camera') as CameraComponent[];
@@ -1060,16 +1088,19 @@ class Viewer {
         this.renderNextFrame();
         this.app.once('postrender', () => {
             const texture = this.camera.camera.renderTarget.colorBuffer;
-            texture.read(0, 0, texture.width, texture.height).then((typedArray: Uint32Array) => {
-                this.pngExporter.export(
-                    `${filename}.png`,
-                    new Uint32Array(typedArray.buffer.slice(0)),
-                    texture.width,
-                    texture.height
-                );
-            }).catch((err: unknown) => {
-                console.error('Failed to capture PNG screenshot from render target:', err);
-            });
+            texture
+                .read(0, 0, texture.width, texture.height)
+                .then((typedArray: Uint32Array) => {
+                    this.pngExporter.export(
+                        `${filename}.png`,
+                        new Uint32Array(typedArray.buffer.slice(0)),
+                        texture.width,
+                        texture.height
+                    );
+                })
+                .catch((err: unknown) => {
+                    console.error('Failed to capture PNG screenshot from render target:', err);
+                });
         });
     }
 
@@ -1101,14 +1132,14 @@ class Viewer {
     }
 
     // load gltf model given its url and list of external urls
-    private loadGltf(gltfUrl: File, externalUrls: Array<File>, warnings: string[]) {
+    private loadGltf(gltfUrl: File, externalUrls: File[], warnings: string[]) {
         return new Promise((resolve, reject) => {
             // provide buffer view callback so we can handle models compressed with MeshOptimizer
             // https://github.com/zeux/meshoptimizer
             const processBufferView = (
-                gltfBuffer: any,
-                buffers: Array<any>,
-                continuation: (err: string, result: any) => void
+                gltfBuffer: GltfBufferView,
+                buffers: ArrayBufferView[],
+                continuation: LoaderCallback<Uint8Array>
             ) => {
                 if (gltfBuffer.extensions && gltfBuffer.extensions.EXT_meshopt_compression) {
                     const extensionDef = gltfBuffer.extensions.EXT_meshopt_compression;
@@ -1153,7 +1184,7 @@ class Viewer {
                 const pixels = texture.lock();
                 for (let i = 0; i < 4; i++) {
                     pixels[i * 4 + 0] = 255; // R
-                    pixels[i * 4 + 1] = 0;   // G
+                    pixels[i * 4 + 1] = 0; // G
                     pixels[i * 4 + 2] = 255; // B
                     pixels[i * 4 + 3] = 255; // A
                 }
@@ -1166,7 +1197,7 @@ class Viewer {
                 return asset;
             };
 
-            const processImage = (gltfImage: any, continuation: (err: string, result: any) => void) => {
+            const processImage = (gltfImage: GltfResource, continuation: LoaderCallback<Asset>) => {
                 const u: File = externalUrls.find((url) => {
                     return url.filename === decodeURIComponent(path.normalize(gltfImage.uri || ''));
                 });
@@ -1194,7 +1225,7 @@ class Viewer {
                 }
             };
 
-            const postProcessTexture = (gltfTexture: any, textureAsset: Asset) => {
+            const postProcessTexture = (gltfTexture: unknown, textureAsset: Asset) => {
                 // Set max anisotropy only for textures that use linear filtering, as anisotropic
                 // filtering only makes sense with linear filtering modes
                 const texture = textureAsset.resource as Texture;
@@ -1203,7 +1234,7 @@ class Viewer {
                 }
             };
 
-            const processBuffer = (gltfBuffer: any, continuation: (err: string, result: any) => void) => {
+            const processBuffer = (gltfBuffer: GltfResource, continuation: LoaderCallback<Uint8Array>) => {
                 const u = externalUrls.find((url) => {
                     return url.filename === decodeURIComponent(path.normalize(gltfBuffer.uri || ''));
                 });
@@ -1223,13 +1254,20 @@ class Viewer {
                 } else if (gltfBuffer.uri && !gltfBuffer.uri.startsWith('data:')) {
                     // External buffer file referenced but not provided
                     // Check if only the current .gltf file was dragged (no other files provided)
-                    const onlyGltfFile = externalUrls.length === 1 &&
+                    const onlyGltfFile =
+                        externalUrls.length === 1 &&
                         this.isModelFilename(externalUrls[0].filename) &&
                         externalUrls[0].filename === gltfUrl.filename;
                     if (onlyGltfFile) {
-                        continuation(`External buffer file '${gltfBuffer.uri}' not found. Try dragging the folder containing the .gltf file instead of the file itself.`, null);
+                        continuation(
+                            `External buffer file '${gltfBuffer.uri}' not found. Try dragging the folder containing the .gltf file instead of the file itself.`,
+                            null
+                        );
                     } else {
-                        continuation(`External buffer file not found: '${gltfBuffer.uri}'. Make sure to include the associated .bin file(s).`, null);
+                        continuation(
+                            `External buffer file not found: '${gltfBuffer.uri}'. Make sure to include the associated .bin file(s).`,
+                            null
+                        );
                     }
                 } else {
                     continuation(null, null);
@@ -1237,7 +1275,6 @@ class Viewer {
             };
 
             const containerAsset = new Asset(gltfUrl.filename, 'container', gltfUrl, null, {
-                // @ts-ignore TODO no definition in pc
                 bufferView: {
                     processAsync: processBufferView
                 },
@@ -1250,6 +1287,11 @@ class Viewer {
                 buffer: {
                     processAsync: processBuffer
                 }
+            } as AssetOptions & {
+                bufferView: { processAsync: typeof processBufferView };
+                image: { processAsync: typeof processImage };
+                texture: { postprocess: typeof postProcessTexture };
+                buffer: { processAsync: typeof processBuffer };
             });
             containerAsset.on('load', () => resolve(containerAsset));
             containerAsset.on('error', (err: string) => reject(err));
@@ -1258,16 +1300,15 @@ class Viewer {
         });
     }
 
-    private loadPly(url: File, externalUrls: Array<File>) {
-        const urls: any = {};
+    private loadPly(url: File, externalUrls: File[]) {
+        const urls: Record<string, string> = {};
         externalUrls.forEach((url) => {
             urls[url.filename] = url.url;
         });
         return new Promise((resolve, reject) => {
             const asset = new Asset(url.filename, 'gsplat', url, null, {
-                // @ts-ignore TODO no definition in pc
-                mapUrl: mapUrl => urls[mapUrl]
-            });
+                mapUrl: (mapUrl) => urls[mapUrl]
+            } as AssetOptions & { mapUrl: (url: string) => string });
             asset.on('load', () => resolve(asset));
             asset.on('error', (err: string) => reject(err));
             this.app.assets.add(asset);
@@ -1291,7 +1332,7 @@ class Viewer {
     // load the list of urls.
     // urls can reference glTF files, glb files and skybox textures.
     // returns true if a model was loaded.
-    loadFiles(files: Array<File>, resetScene = false) {
+    loadFiles(files: File[], resetScene = false) {
         // convert single url to list
         if (!Array.isArray(files)) {
             files = [files];
@@ -1320,53 +1361,53 @@ class Viewer {
 
             // load asset files
             const promises = files.map((file) => {
-                return this.isModelFilename(file.filename) ?
-                    this.loadGltf(file, files, warnings) :
-                    this.isGSplatFilename(file.filename) ?
-                        this.loadPly(file, files) :
-                        null;
+                return this.isModelFilename(file.filename)
+                    ? this.loadGltf(file, files, warnings)
+                    : this.isGSplatFilename(file.filename)
+                      ? this.loadPly(file, files)
+                      : null;
             });
 
             Promise.all(promises)
-            .then((assets: Asset[]) => {
-                this.loadTimestamp = loadTimestamp;
+                .then((assets: Asset[]) => {
+                    this.loadTimestamp = loadTimestamp;
 
-                // add assets to the scene
-                assets.forEach((asset) => {
-                    if (asset) {
-                        this.addToScene(asset);
+                    // add assets to the scene
+                    assets.forEach((asset) => {
+                        if (asset) {
+                            this.addToScene(asset);
+                        }
+                    });
+
+                    // prepare scene post load
+                    this.postSceneLoad();
+
+                    // update scene urls
+                    const urls = files.map((f) => f.url);
+                    const filenames = files.map((f) => f.filename.split('/').pop());
+                    if (resetScene) {
+                        this.observer.set('scene.urls', urls);
+                        this.observer.set('scene.filenames', filenames);
+                    } else {
+                        this.observer.set('scene.urls', this.observer.get('scene.urls').concat(urls));
+                        this.observer.set('scene.filenames', this.observer.get('scene.filenames').concat(filenames));
                     }
+
+                    // Show any warnings that occurred during loading
+                    if (warnings.length > 0) {
+                        // Log all warnings to console for full details
+                        console.warn(`Model loaded with ${warnings.length} warning(s):`);
+                        warnings.forEach((w) => console.warn(`  - ${w}`));
+                        this.observer.set('ui.warnings', warnings);
+                    }
+                })
+                .catch((err) => {
+                    console.log(err);
+                    this.observer.set('ui.error', err?.toString() || err);
+                })
+                .finally(() => {
+                    this.observer.set('ui.spinner', false);
                 });
-
-                // prepare scene post load
-                this.postSceneLoad();
-
-                // update scene urls
-                const urls = files.map(f => f.url);
-                const filenames = files.map(f => f.filename.split('/').pop());
-                if (resetScene) {
-                    this.observer.set('scene.urls', urls);
-                    this.observer.set('scene.filenames', filenames);
-                } else {
-                    this.observer.set('scene.urls', this.observer.get('scene.urls').concat(urls));
-                    this.observer.set('scene.filenames', this.observer.get('scene.filenames').concat(filenames));
-                }
-
-                // Show any warnings that occurred during loading
-                if (warnings.length > 0) {
-                    // Log all warnings to console for full details
-                    console.warn(`Model loaded with ${warnings.length} warning(s):`);
-                    warnings.forEach(w => console.warn(`  - ${w}`));
-                    this.observer.set('ui.warnings', warnings);
-                }
-            })
-            .catch((err) => {
-                console.log(err);
-                this.observer.set('ui.error', err?.toString() || err);
-            })
-            .finally(() => {
-                this.observer.set('ui.spinner', false);
-            });
         } else {
             // load skybox
             this.loadSkybox(files);
@@ -1702,7 +1743,9 @@ class Viewer {
             ACES2: TONEMAP_ACES2
         };
 
-        this.camera.camera.toneMapping = mapping.hasOwnProperty(tonemapping) ? mapping[tonemapping] : TONEMAP_ACES;
+        this.camera.camera.toneMapping = Reflect.apply(mapping.hasOwnProperty, mapping, [tonemapping])
+            ? mapping[tonemapping]
+            : TONEMAP_ACES;
         this.renderNextFrame();
     }
 
@@ -1779,7 +1822,7 @@ class Viewer {
     // add a loaded asset to the scene
     // asset is a container asset with renders and/or animations
     private addToScene(asset: Asset) {
-        const resource = asset.resource as any;
+        const resource = asset.resource as SceneResource;
         const meshesLoaded = resource.renders && resource.renders.length > 0;
         const animsLoaded = resource.animations && resource.animations.length > 0;
         const prevEntity: Entity = this.entities.length === 0 ? null : this.entities[this.entities.length - 1];
@@ -1794,7 +1837,7 @@ class Viewer {
                 // container/glb
                 entity = resource.instantiateRenderEntity();
             } else {
-                const unified = ((asset.file as any)?.filename ?? '').endsWith('lod-meta.json');
+                const unified = ((asset.file as { filename?: string })?.filename ?? '').endsWith('lod-meta.json');
 
                 // gaussian splat scene
                 entity = new Entity();
@@ -1820,8 +1863,8 @@ class Viewer {
         // create animation component
         if (animsLoaded) {
             // append anim tracks to global list
-            resource.animations.forEach((a: any) => {
-                this.animTracks.push(a.resource);
+            resource.animations.forEach((a) => {
+                this.animTracks.push(a.resource as AnimTrack);
             });
         }
 
@@ -1833,10 +1876,10 @@ class Viewer {
     private postSceneLoad() {
         // construct a list of meshInstances so we can quickly access them when configuring wireframe rendering etc.
         this.meshInstances = this.entities
-        .map((entity) => {
-            return this.collectMeshInstances(entity);
-        })
-        .flat();
+            .map((entity) => {
+                return this.collectMeshInstances(entity);
+            })
+            .flat();
 
         // if no meshes are currently loaded, then enable skeleton rendering so user can see something
         if (this.meshInstances.length === 0) {
@@ -1932,13 +1975,13 @@ class Viewer {
         this.animationMap = {};
         // Build unique display names for animations (handle duplicate names)
         const nameCounts = new Map<string, number>();
-        this.animTracks.forEach((t: any) => {
+        this.animTracks.forEach((t) => {
             nameCounts.set(t.name, (nameCounts.get(t.name) ?? 0) + 1);
         });
 
         // If there are duplicates, append index to make names unique
         const nameIndices = new Map<string, number>();
-        const uniqueDisplayNames: string[] = this.animTracks.map((t: any) => {
+        const uniqueDisplayNames: string[] = this.animTracks.map((t) => {
             const name = t.name;
             if (nameCounts.get(name) > 1) {
                 const index = nameIndices.get(name) ?? 0;
@@ -1961,7 +2004,7 @@ class Viewer {
                 entity.anim.removeStateGraph();
             }
 
-            this.animTracks.forEach((t: any, i: number) => {
+            this.animTracks.forEach((t, i) => {
                 // add an event to each track which transitions to the next track when it ends
                 t.events = new AnimEvents([
                     {
@@ -1998,7 +2041,11 @@ class Viewer {
 
         let first = true;
 
-        const renderComponents = entities.map(e => e.findComponents('render') as RenderComponent[]).flat().map(rc => rc.meshInstances).flat();
+        const renderComponents = entities
+            .map((e) => e.findComponents('render') as RenderComponent[])
+            .flat()
+            .map((rc) => rc.meshInstances)
+            .flat();
         if (renderComponents.length) {
             for (let i = 0; i < renderComponents.length; ++i) {
                 if (first) {
@@ -2010,10 +2057,16 @@ class Viewer {
             }
         }
 
-        const gsplatComponents = entities.map(e => e.findComponents('gsplat') as GSplatComponent[]).flat().filter(gc => !!gc.customAabb);
+        const gsplatComponents = entities
+            .map((e) => e.findComponents('gsplat') as GSplatComponent[])
+            .flat()
+            .filter((gc) => !!gc.customAabb);
         if (gsplatComponents.length) {
             for (let i = 0; i < gsplatComponents.length; ++i) {
-                bbox.setFromTransformedAabb(gsplatComponents[i].customAabb, gsplatComponents[i].entity.getWorldTransform());
+                bbox.setFromTransformedAabb(
+                    gsplatComponents[i].customAabb,
+                    gsplatComponents[i].entity.getWorldTransform()
+                );
                 if (first) {
                     result.copy(bbox);
                     first = false;
@@ -2116,9 +2169,10 @@ class Viewer {
                 for (let i = 0; i < this.meshInstances.length; ++i) {
                     const meshInstance = this.meshInstances[i];
 
-                    const vertexBuffer = meshInstance.morphInstance ? // @ts-ignore TODO not defined in pc
-                        meshInstance.morphInstance._vertexBuffer :
-                        meshInstance.mesh.vertexBuffer;
+                    const vertexBuffer = meshInstance.morphInstance
+                        ? (meshInstance.morphInstance as unknown as { _vertexBuffer: Mesh['vertexBuffer'] })
+                              ._vertexBuffer
+                        : meshInstance.mesh.vertexBuffer;
 
                     if (vertexBuffer) {
                         const skinMatrices = meshInstance.skinInstance ? meshInstance.skinInstance.matrices : null;
@@ -2126,8 +2180,11 @@ class Viewer {
                         // if there is skinning we need to manually update matrices here otherwise
                         // our normals are always a frame behind
                         if (skinMatrices) {
-                            // @ts-ignore TODO not defined in pc
-                            meshInstance.skinInstance.updateMatrices(meshInstance.node);
+                            (
+                                meshInstance.skinInstance as unknown as {
+                                    updateMatrices: (node: GraphNode) => void;
+                                }
+                            ).updateMatrices(meshInstance.node);
                         }
 
                         this.debugNormals.generateNormals(

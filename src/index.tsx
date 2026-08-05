@@ -8,33 +8,38 @@ import {
     version as engineVersion,
     revision as engineRevision
 } from 'playcanvas';
+import type * as pc from 'playcanvas';
 
+import { version as modelViewerVersion } from '../package.json';
+
+import { DummyWebGPU } from './dummy-webgpu';
 import { initMaterials } from './material';
-import { ObserverData } from './types';
+import type { ObserverData } from './types';
 import initializeUI from './ui';
 import Viewer from './viewer';
+
 import './style.scss';
-import { version as modelViewerVersion } from '../package.json';
-import { DummyWebGPU } from './dummy-webgpu';
 
 // Permit some additional properties to be set on the window
 declare global {
+    // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- declaration merging
     interface LaunchParams {
         readonly files: FileSystemFileHandle[];
     }
+    // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- declaration merging
     interface Window {
         launchQueue: {
             setConsumer: (callback: (launchParams: LaunchParams) => void) => void;
         };
-        pc: any;
+        pc: typeof pc;
         viewer: Viewer;
-        webkit?: any;
+        webkit?: { messageHandlers?: object };
     }
 }
 
 const skyboxes = [
     { label: 'Abandoned Tank Farm', url: './skybox/abandoned_tank_farm_01_2k.hdr' },
-    { label: 'Adam\'s Place Bridge', url: './skybox/adams_place_bridge_2k.hdr' },
+    { label: "Adam's Place Bridge", url: './skybox/adams_place_bridge_2k.hdr' },
     { label: 'Artist Workshop', url: './skybox/artist_workshop_2k.hdr' },
     { label: 'Ballroom', url: './skybox/ballroom_2k.hdr' },
     { label: 'Circus Arena', url: './skybox/circus_arena_2k.hdr' },
@@ -74,7 +79,7 @@ const observerData: ObserverData = {
     },
     skybox: {
         value: 'Paul Lobe Haus',
-        options: JSON.stringify(['None'].concat(skyboxes.map(s => s.label)).map(l => ({ v: l, t: l }))),
+        options: JSON.stringify(['None'].concat(skyboxes.map((s) => s.label)).map((l) => ({ v: l, t: l }))),
         exposure: 0,
         rotation: 0,
         background: 'Infinite Sphere',
@@ -171,31 +176,34 @@ const observerData: ObserverData = {
 };
 
 const saveOptions = (observer: Observer, name: string) => {
-    const options = observer.json() as any;
-    window.localStorage.setItem(`model-viewer-${name}`, JSON.stringify({
-        camera: options.camera,
-        skybox: options.skybox,
-        light: options.light,
-        debug: options.debug,
-        shadowCatcher: options.shadowCatcher,
-        enableWebGPU: options.enableWebGPU
-    }));
+    const options = observer.json() as ObserverData;
+    window.localStorage.setItem(
+        `model-viewer-${name}`,
+        JSON.stringify({
+            camera: options.camera,
+            skybox: options.skybox,
+            light: options.light,
+            debug: options.debug,
+            shadowCatcher: options.shadowCatcher,
+            enableWebGPU: options.enableWebGPU
+        })
+    );
 };
 
 const loadOptions = (observer: Observer, name: string, skyboxUrls: Map<string, string>) => {
     const filter = ['skybox.options', 'debug.renderMode'];
 
-    const loadRec = (path: string, value:any) => {
+    const loadRec = (path: string, value: unknown) => {
         if (filter.indexOf(path) !== -1) {
             return;
         }
 
         if (typeof value === 'object') {
-            Object.keys(value).forEach((k) => {
-                loadRec(path ? `${path}.${k}` : k, value[k]);
+            Object.keys(value as object).forEach((k) => {
+                loadRec(path ? `${path}.${k}` : k, (value as Record<string, unknown>)[k]);
             });
         } else {
-            if (path !== 'skybox.value' || value === 'None' || skyboxUrls.has(value)) {
+            if (path !== 'skybox.value' || value === 'None' || skyboxUrls.has(value as string)) {
                 observer.set(path, value);
             }
         }
@@ -205,12 +213,16 @@ const loadOptions = (observer: Observer, name: string, skyboxUrls: Map<string, s
     if (options) {
         try {
             loadRec('', JSON.parse(options));
-        } catch { }
+        } catch {
+            // ignore invalid saved options
+        }
     }
 };
 
 // print out versions of dependent packages
-console.log(`Model Viewer v${modelViewerVersion} | PCUI v${pcuiVersion} (${pcuiRevision}) | PlayCanvas Engine v${engineVersion} (${engineRevision})`);
+console.log(
+    `Model Viewer v${modelViewerVersion} | PCUI v${pcuiVersion} (${pcuiRevision}) | PlayCanvas Engine v${engineVersion} (${engineRevision})`
+);
 
 const main = () => {
     // initialize the apps state
@@ -234,7 +246,7 @@ const main = () => {
         fallbackUrl: 'static/lib/draco/draco.js'
     });
 
-    const skyboxUrls = new Map(skyboxes.map(s => [s.label, `static/${s.url}`]));
+    const skyboxUrls = new Map(skyboxes.map((s) => [s.label, `static/${s.url}`]));
 
     // hide / show spinner when loading files
     observer.on('ui.spinner:set', (value: boolean) => {
@@ -279,10 +291,10 @@ const main = () => {
         window.viewer = viewer;
 
         // get list of files, decode them
-        const files: { url: string, filename: string }[] = [];
+        const files: { url: string; filename: string }[] = [];
 
         // handle OS-based file association in PWA mode
-        const promises: Promise<any>[] = [];
+        const promises: Promise<void>[] = [];
         if ('launchQueue' in window) {
             window.launchQueue.setConsumer((launchParams: LaunchParams) => {
                 for (const fileHandle of launchParams.files) {
